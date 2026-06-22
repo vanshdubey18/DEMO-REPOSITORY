@@ -1,0 +1,352 @@
+{
+  "name": "LinkedIn Content Creation Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "LinkedIn Post Generator",
+        "formDescription": "Fill in the details below to generate and publish a LinkedIn post.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Topic",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "e.g. The future of AI in healthcare"
+            },
+            {
+              "fieldLabel": "Tone",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Professional" },
+                  { "option": "Conversational" },
+                  { "option": "Inspirational" },
+                  { "option": "Educational" },
+                  { "option": "Storytelling" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Audience",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "e.g. startup founders, engineers, marketers"
+            },
+            {
+              "fieldLabel": "Key Points (optional)",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "Bullet points or notes you want included"
+            },
+            {
+              "fieldLabel": "Include Hashtags",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Yes" },
+                  { "option": "No" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Include Call to Action",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Yes" },
+                  { "option": "No" }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "respondWith": "text",
+          "responseText": "Your LinkedIn post has been generated and submitted!"
+        }
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [240, 300],
+      "webhookId": "linkedin-content-form"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tone = $input.first().json['Tone'] || 'Professional';\nconst topic = $input.first().json['Topic'];\nconst audience = $input.first().json['Target Audience'] || 'professionals';\nconst keyPoints = $input.first().json['Key Points (optional)'] || '';\nconst includeHashtags = $input.first().json['Include Hashtags'] === 'Yes';\nconst includeCTA = $input.first().json['Include Call to Action'] === 'Yes';\n\nlet systemPrompt = `You are an expert LinkedIn content creator. You write posts that get high engagement — clear, punchy, and human. You understand LinkedIn's algorithm favors posts with strong hooks, line breaks for readability, and authentic voice.`;\n\nlet userPrompt = `Write a LinkedIn post about the following topic.\n\nTopic: ${topic}\nTone: ${tone}\nTarget Audience: ${audience}`;\n\nif (keyPoints) {\n  userPrompt += `\\nKey Points to Include:\\n${keyPoints}`;\n}\n\nuserPrompt += `\\n\\nFormatting rules:\n- Start with a scroll-stopping hook (first line must grab attention)\n- Use short paragraphs (1-3 sentences max)\n- Add line breaks between paragraphs for readability\n- Keep total length between 150-300 words\n- Write in first person`;\n\nif (includeHashtags) {\n  userPrompt += `\\n- End with 3-5 relevant hashtags`;\n} else {\n  userPrompt += `\\n- Do NOT include any hashtags`;\n}\n\nif (includeCTA) {\n  userPrompt += `\\n- End with a clear, natural call to action (e.g. asking readers a question or to share their thoughts)`;\n} else {\n  userPrompt += `\\n- Do NOT include a call to action`;\n}\n\nuserPrompt += `\\n\\nOutput only the post text — no preamble, no explanations.`;\n\nreturn [{\n  json: {\n    systemPrompt,\n    userPrompt,\n    topic,\n    tone,\n    audience\n  }\n}];"
+      },
+      "id": "build-prompt",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-6"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.systemPrompt }}",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.userPrompt }}",
+              "role": "user"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1024,
+          "temperature": 0.8
+        }
+      },
+      "id": "claude-ai",
+      "name": "Generate Post (Claude)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [720, 300],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-credentials",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawContent = $input.first().json.content;\n\n// Extract text from Anthropic response\nlet postText = '';\nif (Array.isArray(rawContent)) {\n  postText = rawContent\n    .filter(block => block.type === 'text')\n    .map(block => block.text)\n    .join('')\n    .trim();\n} else if (typeof rawContent === 'string') {\n  postText = rawContent.trim();\n}\n\n// Count characters (LinkedIn limit: 3000)\nconst charCount = postText.length;\nconst withinLimit = charCount <= 3000;\n\nif (!withinLimit) {\n  // Trim to 3000 chars at last sentence boundary\n  const trimmed = postText.substring(0, 2990);\n  const lastPeriod = trimmed.lastIndexOf('.');\n  postText = lastPeriod > 0 ? trimmed.substring(0, lastPeriod + 1) : trimmed;\n}\n\nreturn [{\n  json: {\n    postText,\n    charCount: postText.length,\n    topic: $('Build Prompt').first().json.topic,\n    tone: $('Build Prompt').first().json.tone\n  }\n}];"
+      },
+      "id": "format-post",
+      "name": "Format & Validate Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "person": {
+          "__rl": true,
+          "value": "={{ $credentials.profileUrn }}",
+          "mode": "id"
+        },
+        "text": "={{ $json.postText }}",
+        "visibility": "PUBLIC",
+        "additionalFields": {}
+      },
+      "id": "linkedin-post",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [1200, 300],
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "linkedin-credentials",
+          "name": "LinkedIn OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const postText = $('Format & Validate Post').first().json.postText;\nconst topic = $('Format & Validate Post').first().json.topic;\nconst tone = $('Format & Validate Post').first().json.tone;\nconst charCount = $('Format & Validate Post').first().json.charCount;\nconst linkedInResponse = $input.first().json;\n\nconst postId = linkedInResponse.id || 'unknown';\nconst timestamp = new Date().toISOString();\n\nreturn [{\n  json: {\n    success: true,\n    postId,\n    timestamp,\n    topic,\n    tone,\n    charCount,\n    postText,\n    linkedInUrl: postId !== 'unknown' ? `https://www.linkedin.com/feed/update/${postId}/` : null\n  }\n}];"
+      },
+      "id": "build-summary",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-result",
+      "name": "Post Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Form Trigger').first().json['Email'] || 'your@email.com' }}",
+        "subject": "✅ LinkedIn Post Published: {{ $('Build Summary').first().json.topic }}",
+        "emailType": "html",
+        "message": "<h2>Your LinkedIn post was published!</h2>\n<p><strong>Topic:</strong> {{ $('Build Summary').first().json.topic }}</p>\n<p><strong>Tone:</strong> {{ $('Build Summary').first().json.tone }}</p>\n<p><strong>Characters:</strong> {{ $('Build Summary').first().json.charCount }}</p>\n<p><strong>Published at:</strong> {{ $('Build Summary').first().json.timestamp }}</p>\n<hr>\n<h3>Post Content:</h3>\n<pre style=\"white-space: pre-wrap; font-family: inherit;\">{{ $('Build Summary').first().json.postText }}</pre>\n<hr>\n{% if $('Build Summary').first().json.linkedInUrl %}\n<p><a href=\"{{ $('Build Summary').first().json.linkedInUrl }}\">View post on LinkedIn</a></p>\n{% endif %}",
+        "options": {}
+      },
+      "id": "send-success-email",
+      "name": "Send Success Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1920, 220],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "your@email.com",
+        "subject": "❌ LinkedIn Post Failed",
+        "emailType": "html",
+        "message": "<h2>LinkedIn post failed to publish</h2>\n<p>Please check your n8n execution logs for details.</p>\n<p><strong>Topic:</strong> {{ $('Build Summary').first().json.topic }}</p>\n<p><strong>Time:</strong> {{ new Date().toISOString() }}</p>",
+        "options": {}
+      },
+      "id": "send-failure-email",
+      "name": "Send Failure Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1920, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Post (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Post (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Format & Validate Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format & Validate Post": {
+      "main": [
+        [
+          {
+            "node": "Post to LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Post Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Successful?": {
+      "main": [
+        [
+          {
+            "node": "Send Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Failure Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "linkedin-automation",
+      "name": "LinkedIn"
+    },
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "content-automation",
+      "name": "Content"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
