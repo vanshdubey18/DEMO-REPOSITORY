@@ -155,7 +155,7 @@
     {
       "parameters": {
         "keys": {
-          "values": [
+          "key": [
             { "currentKey": "sum_order_total", "newKey": "order_totals" },
             { "currentKey": "count_order_total", "newKey": "order_count" }
           ]
