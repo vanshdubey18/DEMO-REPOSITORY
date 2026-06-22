@@ -92,7 +92,13 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "69c6f454-2fba-47fa-8f52-cba7d2c85318",
       "name": "SendOrders",
@@ -202,7 +208,13 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "7a938992-feb5-49b5-8bc8-e56c981cd89a",
       "name": "SendAnalysis",
@@ -270,7 +282,13 @@
         "sendBody": true,
         "contentType": "binaryData",
         "inputDataFieldName": "report",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "4ea72e57-39ac-4c34-ab65-a905293302d9",
       "name": "SendReport",
